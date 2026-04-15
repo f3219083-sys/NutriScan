@@ -27,14 +27,23 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [showMealPicker, setShowMealPicker] = useState(false);
+  const [selectedMealType, setSelectedMealType] = useState<string | null>(null);
   const [scannedFoodKey, setScannedFoodKey] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const cameraRef = useRef<any>(null);
 
-  const handleScan = async () => {
+  const handleScanPress = () => {
     if (scanning) return;
-    setScanning(true);
+    setShowMealPicker(true);
+    setSelectedMealType(null);
+    setAnalysis(null);
+    setScannedFoodKey(null);
+  };
+
+  const handleMealSelect = async (mealTypeId: string) => {
+    setSelectedMealType(mealTypeId);
     setShowMealPicker(false);
+    setScanning(true);
 
     await new Promise(r => setTimeout(r, 2200));
 
@@ -48,29 +57,24 @@ export default function ScannerScreen() {
     setScannedFoodKey(foodKey);
     setAnalysis(result);
     setScanning(false);
-    setShowMealPicker(true);
-  };
 
-  const handleMealSelect = async (mealTypeId: string) => {
-    if (!scannedFoodKey) return;
     const today = new Date();
     await addFoodEntry({
       id: Date.now().toString(),
-      foodKey: scannedFoodKey,
+      foodKey,
       mealType: mealTypeId,
       timestamp: Date.now(),
       date: today.toDateString(),
     });
+
     router.push({
       pathname: '/analysis',
-      params: {
-        foodKey: scannedFoodKey,
-        mealType: mealTypeId,
-      },
+      params: { foodKey, mealType: mealTypeId },
     });
-    setShowMealPicker(false);
+
     setAnalysis(null);
     setScannedFoodKey(null);
+    setSelectedMealType(null);
   };
 
   if (!permission) {
@@ -139,32 +143,10 @@ export default function ScannerScreen() {
             </View>
           </View>
 
-          {/* Quick result preview */}
-          {analysis && !showMealPicker && (
-            <View style={styles.quickResult}>
-              <Text style={styles.quickResultEmoji}>{analysis.emoji}</Text>
-              <View style={styles.quickResultInfo}>
-                <Text style={styles.quickResultName}>{analysis.name}</Text>
-                <Text style={styles.quickResultCalories}>{analysis.calories} kcal</Text>
-              </View>
-              <View style={[styles.scoreBadge, {
-                backgroundColor: analysis.score >= 7 ? Colors.success + '33' :
-                  analysis.score >= 5 ? Colors.warning + '33' : Colors.danger + '33'
-              }]}>
-                <Text style={[styles.scoreText, {
-                  color: analysis.score >= 7 ? Colors.success :
-                    analysis.score >= 5 ? Colors.warning : Colors.danger
-                }]}>{analysis.score}/10</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Meal type picker */}
+          {/* Pre-scan meal picker */}
           {showMealPicker && (
             <View style={styles.mealPicker}>
-              <Text style={styles.mealPickerTitle}>
-                {analysis?.verdictEmoji} {analysis?.verdictText} — Καταχώρησε ως:
-              </Text>
+              <Text style={styles.mealPickerTitle}>🍽️ Ποιο γεύμα θα σκανάρεις;</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -182,15 +164,33 @@ export default function ScannerScreen() {
                   </TouchableOpacity>
                 ))}
               </ScrollView>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setShowMealPicker(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelBtnText}>Άκυρο</Text>
+              </TouchableOpacity>
             </View>
           )}
+
+          {/* Scanning indicator */}
+          {scanning && selectedMealType && (() => {
+            const meal = MEAL_TYPES.find(m => m.id === selectedMealType);
+            return (
+              <View style={styles.scanningInfo}>
+                <Text style={styles.scanningInfoEmoji}>{meal?.emoji}</Text>
+                <Text style={styles.scanningInfoText}>{meal?.label} — Αναλύω...</Text>
+              </View>
+            );
+          })()}
 
           {/* Scan button */}
           <View style={styles.scanButtonArea}>
             <TouchableOpacity
-              style={[styles.scanButton, scanning && styles.scanButtonDisabled]}
-              onPress={handleScan}
-              disabled={scanning}
+              style={[styles.scanButton, (scanning || showMealPicker) && styles.scanButtonDisabled]}
+              onPress={handleScanPress}
+              disabled={scanning || showMealPicker}
               activeOpacity={0.85}
             >
               {scanning ? (
@@ -200,7 +200,7 @@ export default function ScannerScreen() {
               )}
             </TouchableOpacity>
             <Text style={styles.scanButtonLabel}>
-              {scanning ? 'Αναλύεται...' : 'Σκανάρισε Φαγητό'}
+              {scanning ? 'Αναλύεται...' : showMealPicker ? 'Επίλεξε γεύμα...' : 'Σκανάρισε Φαγητό'}
             </Text>
           </View>
         </SafeAreaView>
@@ -323,42 +323,27 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
     fontSize: FontSize.lg,
   },
-  quickResult: {
+  scanningInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.primaryMuted,
     borderRadius: Radius.lg,
     padding: Spacing.md,
     marginHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
     gap: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.primary + '44',
     width: width - Spacing.md * 2,
   },
-  quickResultEmoji: {
-    fontSize: 32,
+  scanningInfoEmoji: {
+    fontSize: 24,
   },
-  quickResultInfo: {
-    flex: 1,
-  },
-  quickResultName: {
+  scanningInfoText: {
     fontSize: FontSize.md,
     fontWeight: FontWeight.semibold,
-    color: Colors.textPrimary,
-  },
-  quickResultCalories: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-  },
-  scoreBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: Radius.sm,
-  },
-  scoreText: {
-    fontWeight: FontWeight.bold,
-    fontSize: FontSize.sm,
+    color: Colors.primary,
+    flex: 1,
   },
   mealPicker: {
     backgroundColor: Colors.surface,
@@ -371,11 +356,21 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   mealPickerTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.bold,
     color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
     textAlign: 'center',
+  },
+  cancelBtn: {
+    marginTop: Spacing.sm,
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  cancelBtnText: {
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    fontWeight: FontWeight.medium,
   },
   mealPickerScroll: {
     flexDirection: 'row',
